@@ -161,7 +161,7 @@
             float amplitude = 0.5;
             float frequency = 1.0;
             
-            for(int i = 0; i < 5; i++) {
+            for(int i = 0; i < 6; i++) {
                 value += amplitude * smoothNoise(p * frequency);
                 frequency *= 2.0;
                 amplitude *= 0.5;
@@ -181,90 +181,127 @@
             vec2 uv = (gl_FragCoord.xy - resolution * 0.5) / min(resolution.x, resolution.y);
             
             // Breathing animation
-            float breathe = sin(time * 0.8) * 0.15 + 0.85;
+            float breathe = sin(time * 0.7) * 0.12 + 0.88;
             uv /= breathe;
             
             float dist = length(uv);
             float angle = atan(uv.y, uv.x);
             
-            // Organic membrane wobble
-            float wobble = fbm(vec2(angle * 3.0 + time * 0.3, time * 0.2)) * 0.15;
-            float membrane = 0.35 + wobble;
+            // Organic membrane wobble with more variation
+            float wobbleNoise = fbm(vec2(angle * 4.0 + time * 0.25, time * 0.18));
+            float wobble = wobbleNoise * 0.12;
+            float membraneRadius = 0.38 + wobble;
             
-            // Core glow
-            float core = 1.0 - smoothstep(0.0, 0.15, dist);
-            core = pow(core, 2.0);
+            // Enhanced core glow with layering
+            float core = exp(-dist * 8.0) * 2.0;
+            core += exp(-dist * 4.0) * 1.2;
+            core += exp(-dist * 2.0) * 0.6;
             
-            // Soft membrane edge
-            float edge = smoothstep(membrane + 0.1, membrane - 0.05, dist);
-            edge *= (1.0 - smoothstep(membrane - 0.05, 0.0, dist));
+            // Soft membrane edge - more visible
+            float membraneEdge = smoothstep(membraneRadius + 0.08, membraneRadius - 0.02, dist);
+            membraneEdge *= (1.0 - smoothstep(membraneRadius - 0.02, membraneRadius * 0.7, dist));
             
-            // Internal filaments
-            vec2 filamentUV = rotate(uv, time * 0.1);
+            // Enhanced internal filaments - neural network style
+            vec2 filamentUV = uv;
             float filaments = 0.0;
             
-            for(int i = 0; i < 8; i++) {
+            for(int i = 0; i < 12; i++) {
                 float fi = float(i);
-                float rotAngle = fi * 0.785398 + time * 0.15; // 45 degrees * i
+                float rotAngle = fi * 0.523599 + time * 0.12; // 30 degrees * i
                 vec2 dir = vec2(cos(rotAngle), sin(rotAngle));
                 
-                // Create branching patterns
-                float branch = fbm(filamentUV * 4.0 + dir * time * 0.3 + fi);
-                float branchLine = abs(dot(normalize(uv), dir));
-                branchLine = pow(branchLine, 8.0 + branch * 5.0);
+                // Create curved branching patterns
+                vec2 curvedUV = rotate(filamentUV, sin(time * 0.3 + fi) * 0.3);
+                float branchNoise = fbm(curvedUV * 5.0 + dir * time * 0.4 + fi * 10.0);
                 
-                // Only show inside membrane
-                float insideMask = smoothstep(membrane, membrane * 0.3, dist);
-                filaments += branchLine * insideMask * (0.3 + branch * 0.4);
+                // Draw thin lines along directions
+                float lineVal = abs(dot(normalize(uv), dir));
+                lineVal = 1.0 - lineVal;
+                lineVal = pow(lineVal, 20.0 + branchNoise * 15.0);
+                
+                // Fade with distance from center
+                float fadeOut = smoothstep(membraneRadius * 0.9, membraneRadius * 0.2, dist);
+                
+                // Create branching effect
+                float branches = step(0.5, branchNoise) * lineVal * fadeOut;
+                filaments += branches * (0.4 + branchNoise * 0.6);
             }
             
-            filaments = clamp(filaments, 0.0, 1.0);
-            
-            // Lightning-like flares
-            float flareNoise = fbm(uv * 6.0 + time * 0.5);
-            float flare = filaments * flareNoise;
-            flare *= smoothstep(membrane, 0.0, dist);
-            
-            // Outer halo
-            float halo = exp(-dist * 2.0) * 0.3;
-            halo += exp(-dist * 4.0) * 0.2;
-            
-            // Particle wisps
-            float wisps = 0.0;
-            for(int i = 0; i < 3; i++) {
+            // Add secondary finer filaments
+            for(int i = 0; i < 8; i++) {
                 float fi = float(i);
+                float rotAngle = fi * 0.785398 + time * 0.08 + 0.4; // Offset from main
+                vec2 dir = vec2(cos(rotAngle), sin(rotAngle));
+                
+                float branchNoise = fbm(uv * 8.0 + dir * time * 0.5 + fi * 5.0);
+                float lineVal = abs(dot(normalize(uv), dir));
+                lineVal = 1.0 - lineVal;
+                lineVal = pow(lineVal, 25.0 + branchNoise * 20.0);
+                
+                float fadeOut = smoothstep(membraneRadius * 0.85, membraneRadius * 0.3, dist);
+                filaments += lineVal * fadeOut * 0.3;
+            }
+            
+            filaments = clamp(filaments, 0.0, 1.5);
+            
+            // Lightning-like energy flares
+            float energyFlow = fbm(uv * 7.0 + time * 0.6);
+            float flare = filaments * energyFlow * 0.8;
+            flare *= smoothstep(membraneRadius, membraneRadius * 0.2, dist);
+            
+            // Outer halo - softer and more diffused
+            float halo = exp(-dist * 1.8) * 0.4;
+            halo += exp(-dist * 3.5) * 0.3;
+            halo += exp(-dist * 6.0) * 0.2;
+            
+            // Enhanced particle wisps
+            float wisps = 0.0;
+            for(int i = 0; i < 5; i++) {
+                float fi = float(i);
+                float wispTime = time * (0.35 + fi * 0.05);
                 vec2 wispCenter = vec2(
-                    sin(time * 0.4 + fi * 2.1) * 0.4,
-                    cos(time * 0.3 + fi * 1.7) * 0.4
+                    sin(wispTime + fi * 2.4) * (0.35 + sin(time * 0.2 + fi) * 0.1),
+                    cos(wispTime * 0.8 + fi * 1.9) * (0.35 + cos(time * 0.15 + fi) * 0.1)
                 );
                 float wispDist = length(uv - wispCenter);
-                float wisp = exp(-wispDist * 15.0) * (0.5 + fbm(uv * 10.0 + time));
-                wisp *= smoothstep(membrane, membrane + 0.3, length(wispCenter));
-                wisps += wisp * 0.15;
+                float wispNoise = fbm(uv * 12.0 + time * 0.5 + fi);
+                float wisp = exp(-wispDist * 18.0) * (0.6 + wispNoise * 0.4);
+                
+                // Only show wisps outside membrane
+                wisp *= smoothstep(membraneRadius - 0.05, membraneRadius + 0.15, length(wispCenter));
+                wisps += wisp * 0.2;
             }
             
-            // Combine all elements with colors
+            // Combine all elements with enhanced colors
             vec3 color = vec3(0.0);
             
-            // Core (bright white/primary glow)
-            color += coreColor * core * 1.5;
+            // Core (bright white/primary glow) - more intense
+            color += coreColor * core * 1.8;
             
-            // Membrane and structure
-            color += primaryColor * edge * 0.8;
-            color += secondaryColor * filaments * 0.6;
-            color += primaryColor * flare * 1.2;
+            // Membrane edge - more visible
+            color += primaryColor * membraneEdge * 1.2;
+            color += mix(primaryColor, secondaryColor, 0.5) * membraneEdge * 0.6;
+            
+            // Internal filaments - prominent neural structure
+            color += primaryColor * filaments * 0.9;
+            color += secondaryColor * filaments * 0.7;
+            
+            // Energy flares
+            color += primaryColor * flare * 1.5;
+            color += coreColor * flare * 0.8;
             
             // Ambient effects
-            color += secondaryColor * halo;
-            color += primaryColor * wisps;
+            color += secondaryColor * halo * 0.8;
+            color += primaryColor * wisps * 0.9;
             
-            // Subtle pulsing
-            float pulse = sin(time * 1.5) * 0.1 + 0.9;
-            color *= pulse;
+            // Subtle pulsing - more organic
+            float pulse = sin(time * 1.3) * 0.08 + 0.92;
+            float pulse2 = sin(time * 2.1 + 1.5) * 0.05 + 0.95;
+            color *= pulse * pulse2;
             
             // Vignette for depth
-            float vignette = 1.0 - smoothstep(0.4, 1.2, dist);
-            color *= vignette;
+            float vignette = 1.0 - smoothstep(0.5, 1.3, dist);
+            color *= mix(0.7, 1.0, vignette);
             
             gl_FragColor = vec4(color, 1.0);
         }
